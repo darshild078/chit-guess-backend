@@ -1,5 +1,21 @@
+# Node & JS
 node_modules/
 dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# Environment & Logs
 .env
+.env.local
 *.log
 .DS_Store
