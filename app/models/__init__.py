@@ -5,6 +5,7 @@ from app.models.participant import Participant
 from app.models.round import GameRound
 from app.models.chit import ChitMessage
 from app.models.alias import RoundAlias
+from app.models.guess import RoundGuess
 
 __all__ = [
     "Base",
@@ -16,4 +17,5 @@ __all__ = [
     "GameRound",
     "ChitMessage",
     "RoundAlias",
+    "RoundGuess",
 ]

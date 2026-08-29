@@ -11,6 +11,7 @@ from app.schemas.room import (
     CreateRoomRequest,
     JoinRoomRequest,
     LockRoomRequest,
+    UpdateRoomSettingsRequest,
     RoomCreatedDTO,
     RoomJoinedDTO,
     RoomAvailabilityDTO,
@@ -19,15 +20,13 @@ from app.schemas.room import (
 )
 from app.schemas.participant import (
     PlayerActivityItemDTO,
-    HostActivityItemDTO,
     HostManagePlayerDTO,
+    LeaderboardItemDTO,
 )
-from app.schemas.reveal import RevealResultsDTO
 from app.services.room_service import RoomService
 from app.services.participant_service import ParticipantService
 from app.services.round_service import RoundService
-from app.services.alias_service import AliasService
-from app.services.reveal_service import RevealService
+from app.services.guess_service import GuessService
 from app.sockets.emitters import (
     emit_room_state_updated,
     emit_player_joined,
@@ -49,9 +48,10 @@ async def create_room(
         db,
         host_display_name=payload.hostDisplayName,
         title=payload.title,
-        max_players=payload.maxPlayers
+        max_players=payload.maxPlayers,
+        total_rounds=payload.totalRounds
     )
-    return ApiResponse(data=result, message="Room created successfully.")
+    return ApiResponse(data=result, message=f"Room created successfully! ({payload.totalRounds} rounds).")
 
 @router.post("/join", response_model=ApiResponse[RoomJoinedDTO])
 async def join_room(
@@ -65,7 +65,7 @@ async def join_room(
     )
     await emit_player_joined(result.roomId, payload.displayName, 1)
     await emit_room_state_updated(result.roomId)
-    return ApiResponse(data=result, message="Joined room successfully.")
+    return ApiResponse(data=result, message=f"Welcome to the room, {payload.displayName}!")
 
 @router.get("/code/{roomCode}/availability", response_model=ApiResponse[RoomAvailabilityDTO])
 async def check_availability(
@@ -83,6 +83,20 @@ async def get_current_room(
     result = await RoomService.get_room_view(db, participant)
     return ApiResponse(data=result)
 
+@router.patch("/{roomId}/settings", response_model=ApiResponse[dict])
+async def update_settings(
+    payload: UpdateRoomSettingsRequest,
+    roomId: str = Path(...),
+    participant: Participant = Depends(require_owner),
+    db: AsyncSession = Depends(get_db)
+):
+    room = await RoomService.update_settings(db, roomId, payload.totalRounds, payload.maxPlayers)
+    await emit_room_state_updated(roomId)
+    return ApiResponse(
+        data={"totalRounds": room.totalRounds, "maxPlayers": room.maxPlayers},
+        message="Room settings updated successfully."
+    )
+
 @router.post("/{roomId}/leave", response_model=ApiResponse[dict])
 async def leave_room(
     roomId: str = Path(...),
@@ -92,9 +106,9 @@ async def leave_room(
     await RoomService.leave_room(db, participant)
     await emit_player_left(roomId, participant.displayName, 1)
     await emit_room_state_updated(roomId)
-    return ApiResponse(data={"left": True}, message="Left room.")
+    return ApiResponse(data={"left": True}, message="You have left the room.")
 
-@router.get("/{roomId}/activity", response_model=ApiResponse[List[Union[PlayerActivityItemDTO, HostActivityItemDTO]]])
+@router.get("/{roomId}/activity", response_model=ApiResponse[List[PlayerActivityItemDTO]])
 async def get_activity(
     roomId: str = Path(...),
     participant: Participant = Depends(require_room_member),
@@ -113,61 +127,18 @@ async def start_round(
     new_round = await RoundService.start_round(db, roomId)
     await emit_room_state_updated(roomId)
     await emit_player_activity_updated(roomId)
-    return ApiResponse(data={"roundNumber": new_round.roundNumber}, message="New round started.")
+    return ApiResponse(data={"roundNumber": new_round.roundNumber}, message=f"Round {new_round.roundNumber} started! Enter your secret words.")
 
-@router.post("/{roomId}/submissions/open", response_model=ApiResponse[dict])
-async def open_submissions(
+@router.post("/{roomId}/next-round", response_model=ApiResponse[dict])
+async def start_next_round(
     roomId: str = Path(...),
     participant: Participant = Depends(require_owner),
     db: AsyncSession = Depends(get_db)
 ):
-    await RoundService.open_submissions(db, roomId)
+    new_round = await RoundService.start_round(db, roomId)
     await emit_room_state_updated(roomId)
     await emit_player_activity_updated(roomId)
-    return ApiResponse(data={"submissionsOpen": True}, message="Submissions opened.")
-
-@router.post("/{roomId}/submissions/close", response_model=ApiResponse[dict])
-async def close_submissions(
-    roomId: str = Path(...),
-    participant: Participant = Depends(require_owner),
-    db: AsyncSession = Depends(get_db)
-):
-    await RoundService.close_submissions(db, roomId)
-    await emit_room_state_updated(roomId)
-    await emit_player_activity_updated(roomId)
-    return ApiResponse(data={"submissionsClosed": True}, message="Submissions closed.")
-
-@router.post("/{roomId}/aliases/shuffle", response_model=ApiResponse[dict])
-async def shuffle_aliases(
-    roomId: str = Path(...),
-    participant: Participant = Depends(require_owner),
-    db: AsyncSession = Depends(get_db)
-):
-    round_obj = await RoundService.get_current_round(db, roomId)
-    if round_obj:
-        await AliasService.reshuffle_aliases(db, round_obj)
-        await emit_player_activity_updated(roomId)
-    return ApiResponse(data={"shuffled": True}, message="Aliases reshuffled.")
-
-@router.post("/{roomId}/reveal", response_model=ApiResponse[RevealResultsDTO])
-async def reveal_identities(
-    roomId: str = Path(...),
-    participant: Participant = Depends(require_owner),
-    db: AsyncSession = Depends(get_db)
-):
-    results = await RevealService.reveal_identities(db, roomId)
-    await emit_room_state_updated(roomId)
-    await emit_player_activity_updated(roomId)
-    return ApiResponse(data=results, message="Identities revealed.")
-
-@router.get("/{roomId}/results", response_model=ApiResponse[RevealResultsDTO])
-async def get_results(
-    roomId: str = Path(...),
-    participant: Participant = Depends(require_room_member),
-    db: AsyncSession = Depends(get_db)
-):
-    results = await RevealService.get_revealed_results(db, roomId)
-    return ApiResponse(data=results)
+    return ApiResponse(data={"roundNumber": new_round.roundNumber}, message=f"Round {new_round.roundNumber} started! Enter your secret words.")
 
 @router.get("/{roomId}/players", response_model=ApiResponse[List[HostManagePlayerDTO]])
 async def get_players(
@@ -185,7 +156,7 @@ async def remove_player(
     participant: Participant = Depends(require_owner),
     db: AsyncSession = Depends(get_db)
 ):
-    removed_participant_id = await ParticipantService.remove_player_by_alias(db, roomId, aliasId)
+    removed_participant_id = await ParticipantService.remove_player_by_id(db, roomId, aliasId)
     await emit_player_removed(removed_participant_id)
     await emit_room_state_updated(roomId)
     await emit_player_activity_updated(roomId)
@@ -200,7 +171,7 @@ async def lock_room(
 ):
     locked = await RoomService.lock_room(db, roomId, payload.locked)
     await emit_room_state_updated(roomId)
-    return ApiResponse(data={"locked": locked}, message=f"Room {'locked' if locked else 'unlocked'}.")
+    return ApiResponse(data={"locked": locked}, message=f"Room {'locked' if locked else 'unlocked'} successfully.")
 
 @router.post("/{roomId}/end", response_model=ApiResponse[dict])
 async def end_room(
@@ -210,4 +181,4 @@ async def end_room(
 ):
     await RoomService.end_room(db, roomId)
     await emit_room_ended(roomId)
-    return ApiResponse(data={"ended": True}, message="Room ended.")
+    return ApiResponse(data={"ended": True}, message="Room has been ended by the host.")

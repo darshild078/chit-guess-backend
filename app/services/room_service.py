@@ -25,7 +25,8 @@ class RoomService:
         db: AsyncSession,
         host_display_name: str,
         title: Optional[str] = None,
-        max_players: int = 10
+        max_players: int = 10,
+        total_rounds: int = 3
     ) -> RoomCreatedDTO:
         clean_name = sanitize_display_name(host_display_name)
         now = datetime.now(timezone.utc)
@@ -51,6 +52,7 @@ class RoomService:
             status=RoomStatus.lobby,
             ownerParticipantId=owner_id,
             maxPlayers=max_players,
+            totalRounds=total_rounds,
             locked=False,
             currentRoundNumber=0,
             expiresAt=expires_at,
@@ -64,6 +66,7 @@ class RoomService:
             roomId=room_id,
             displayName=clean_name,
             role=ParticipantRole.owner,
+            score=0,
             connected=True,
             removed=False,
             sessionVersion=1,
@@ -86,7 +89,8 @@ class RoomService:
             roomCode=code,
             participantId=owner_id,
             token=token,
-            role=ParticipantRole.owner.value
+            role=ParticipantRole.owner.value,
+            totalRounds=total_rounds
         )
 
     @staticmethod
@@ -151,10 +155,9 @@ class RoomService:
                 role=existing_part.role.value
             )
 
-        # Count active non-owner participants
+        # Count active non-removed participants
         stmt_count = select(func.count()).select_from(Participant).where(
             Participant.roomId == room.id,
-            Participant.role == ParticipantRole.player,
             Participant.removed == False
         )
         count_res = await db.execute(stmt_count)
@@ -169,6 +172,7 @@ class RoomService:
             roomId=room.id,
             displayName=clean_name,
             role=ParticipantRole.player,
+            score=0,
             connected=True,
             removed=False,
             sessionVersion=1,
@@ -217,7 +221,6 @@ class RoomService:
 
         stmt_count = select(func.count()).select_from(Participant).where(
             Participant.roomId == room.id,
-            Participant.role == ParticipantRole.player,
             Participant.removed == False
         )
         count_res = await db.execute(stmt_count)
@@ -243,7 +246,6 @@ class RoomService:
         # Count active players
         stmt_count = select(func.count()).select_from(Participant).where(
             Participant.roomId == room.id,
-            Participant.role == ParticipantRole.player,
             Participant.removed == False,
             Participant.connected == True
         )
@@ -257,6 +259,7 @@ class RoomService:
                 title=room.title,
                 status=room.status.value,
                 currentRoundNumber=room.currentRoundNumber,
+                totalRounds=room.totalRounds,
                 playerCount=player_count,
                 maxPlayers=room.maxPlayers,
                 locked=room.locked,
@@ -278,6 +281,7 @@ class RoomService:
                 title=room.title,
                 status=room.status.value,
                 currentRoundNumber=room.currentRoundNumber,
+                totalRounds=room.totalRounds,
                 playerCount=player_count,
                 maxPlayers=room.maxPlayers,
                 locked=room.locked,
@@ -305,6 +309,23 @@ class RoomService:
         db.add(room)
         await db.flush()
         return locked
+
+    @staticmethod
+    async def update_settings(db: AsyncSession, room_id: str, total_rounds: Optional[int], max_players: Optional[int]) -> Room:
+        stmt = select(Room).where(Room.id == room_id)
+        res = await db.execute(stmt)
+        room = res.scalars().first()
+        if not room:
+            raise not_found("Room not found.")
+
+        if total_rounds is not None:
+            room.totalRounds = total_rounds
+        if max_players is not None:
+            room.maxPlayers = max_players
+
+        db.add(room)
+        await db.flush()
+        return room
 
     @staticmethod
     async def end_room(db: AsyncSession, room_id: str) -> None:

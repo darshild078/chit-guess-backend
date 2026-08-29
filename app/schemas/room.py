@@ -6,6 +6,7 @@ class CreateRoomRequest(BaseModel):
     hostDisplayName: str = Field(min_length=2, max_length=20)
     title: Optional[str] = Field(default=None, max_length=50)
     maxPlayers: int = Field(default=10, ge=2, le=30)
+    totalRounds: int = Field(default=3, ge=1, le=10)
 
 class JoinRoomRequest(BaseModel):
     roomCode: str = Field(min_length=6, max_length=6)
@@ -14,12 +15,17 @@ class JoinRoomRequest(BaseModel):
 class LockRoomRequest(BaseModel):
     locked: bool
 
+class UpdateRoomSettingsRequest(BaseModel):
+    totalRounds: Optional[int] = Field(default=None, ge=1, le=10)
+    maxPlayers: Optional[int] = Field(default=None, ge=2, le=30)
+
 class RoomCreatedDTO(BaseModel):
     roomId: str
     roomCode: str
     participantId: str
     token: str
     role: str = "owner"
+    totalRounds: int = 3
 
 class RoomJoinedDTO(BaseModel):
     roomId: str
@@ -37,6 +43,7 @@ class HostRoomViewDTO(BaseModel):
     title: Optional[str] = None
     status: str
     currentRoundNumber: int
+    totalRounds: int
     playerCount: int
     maxPlayers: int
     locked: bool
@@ -49,6 +56,7 @@ class PlayerRoomViewDTO(BaseModel):
     title: Optional[str] = None
     status: str
     currentRoundNumber: int
+    totalRounds: int
     playerCount: int
     maxPlayers: int
     locked: bool

@@ -14,6 +14,8 @@ class Room(Base):
     status = Column(SQLEnum(RoomStatus, name="RoomStatus", values_callable=lambda x: [e.value for e in x]), default=RoomStatus.lobby, nullable=False)
     ownerParticipantId = Column(String, nullable=True)
     maxPlayers = Column(Integer, default=10, nullable=False)
+    totalRounds = Column(Integer, default=3, nullable=False)
+    timerSeconds = Column(Integer, default=60, nullable=False)
     locked = Column(Boolean, default=False, nullable=False)
     currentRoundNumber = Column(Integer, default=0, nullable=False)
     expiresAt = Column(DateTime(timezone=True), nullable=False)

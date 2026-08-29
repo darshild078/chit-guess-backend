@@ -3,6 +3,7 @@ from app.schemas.room import (
     CreateRoomRequest,
     JoinRoomRequest,
     LockRoomRequest,
+    UpdateRoomSettingsRequest,
     RoomCreatedDTO,
     RoomJoinedDTO,
     RoomAvailabilityDTO,
@@ -11,6 +12,7 @@ from app.schemas.room import (
 )
 from app.schemas.participant import (
     PlayerActivityItemDTO,
+    LeaderboardItemDTO,
     HostActivityItemDTO,
     HostManagePlayerDTO,
 )
@@ -20,15 +22,13 @@ from app.schemas.submission import (
     MySubmissionDTO,
     SubmissionStatusDTO,
 )
-from app.schemas.inbox import (
-    MarkReadRequest,
-    MarkGuessRequest,
-    AnonymousChitDTO,
-    AnonymousInboxDTO,
-)
-from app.schemas.reveal import (
-    RevealedChitDTO,
-    RevealResultsDTO,
+from app.schemas.guess import (
+    RoundWordDTO,
+    ChitGuessItem,
+    SubmitGuessesRequest,
+    GuessSummaryItem,
+    RoundRevealDetailDTO,
+    RoundResultsDTO,
 )
 
 __all__ = [
@@ -38,22 +38,24 @@ __all__ = [
     "CreateRoomRequest",
     "JoinRoomRequest",
     "LockRoomRequest",
+    "UpdateRoomSettingsRequest",
     "RoomCreatedDTO",
     "RoomJoinedDTO",
     "RoomAvailabilityDTO",
     "HostRoomViewDTO",
     "PlayerRoomViewDTO",
     "PlayerActivityItemDTO",
+    "LeaderboardItemDTO",
     "HostActivityItemDTO",
     "HostManagePlayerDTO",
     "SubmitChitRequest",
     "EditChitRequest",
     "MySubmissionDTO",
     "SubmissionStatusDTO",
-    "MarkReadRequest",
-    "MarkGuessRequest",
-    "AnonymousChitDTO",
-    "AnonymousInboxDTO",
-    "RevealedChitDTO",
-    "RevealResultsDTO",
+    "RoundWordDTO",
+    "ChitGuessItem",
+    "SubmitGuessesRequest",
+    "GuessSummaryItem",
+    "RoundRevealDetailDTO",
+    "RoundResultsDTO",
 ]

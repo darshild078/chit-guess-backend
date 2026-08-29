@@ -8,6 +8,8 @@ from app.models.enums import RoundStatus
 from app.schemas.submission import MySubmissionDTO, SubmissionStatusDTO
 from app.utils.cuid import generate_cuid
 from app.utils.sanitize import sanitize_single_word
+from app.services.round_service import RoundService
+from app.sockets.emitters import emit_guessing_started, emit_player_activity_updated
 from app.errors import bad_request, not_found
 
 class SubmissionService:
@@ -97,9 +99,8 @@ class SubmissionService:
         current_round = res_round.scalars().first()
 
         if not current_round or current_round.status != RoundStatus.submissions_open:
-            raise bad_request("Submissions are currently closed for this room.")
+            raise bad_request("Submissions are currently closed. The round has already progressed.")
 
-        # Check existing submission
         stmt_chit = select(ChitMessage).where(
             ChitMessage.roundId == current_round.id,
             ChitMessage.senderId == participant_id
@@ -113,23 +114,30 @@ class SubmissionService:
             existing.updatedAt = now
             db.add(existing)
             await db.flush()
-            return MySubmissionDTO(body=existing.body, submittedAt=existing.submittedAt, updatedAt=existing.updatedAt)
+            result_dto = MySubmissionDTO(body=existing.body, submittedAt=existing.submittedAt, updatedAt=existing.updatedAt)
+        else:
+            new_chit = ChitMessage(
+                id=generate_cuid(),
+                roomId=room_id,
+                roundId=current_round.id,
+                senderId=participant_id,
+                body=clean_word,
+                isRead=False,
+                isGuessed=False,
+                submittedAt=now,
+                updatedAt=now,
+            )
+            db.add(new_chit)
+            await db.flush()
+            result_dto = MySubmissionDTO(body=new_chit.body, submittedAt=new_chit.submittedAt, updatedAt=new_chit.updatedAt)
 
-        new_chit = ChitMessage(
-            id=generate_cuid(),
-            roomId=room_id,
-            roundId=current_round.id,
-            senderId=participant_id,
-            body=clean_word,
-            isRead=False,
-            isGuessed=False,
-            submittedAt=now,
-            updatedAt=now,
-        )
-        db.add(new_chit)
-        await db.flush()
+        # Check if all participants have submitted -> auto-advance to Guessing phase!
+        all_submitted = await RoundService.check_all_submissions_done(db, room_id)
+        if all_submitted:
+            await RoundService.advance_to_guessing(db, room_id)
+            await emit_guessing_started(room_id)
 
-        return MySubmissionDTO(body=new_chit.body, submittedAt=new_chit.submittedAt, updatedAt=new_chit.updatedAt)
+        return result_dto
 
     @staticmethod
     async def edit_chit(
@@ -149,7 +157,7 @@ class SubmissionService:
         current_round = res_round.scalars().first()
 
         if not current_round or current_round.status != RoundStatus.submissions_open:
-            raise bad_request("Submissions are currently closed. Edits cannot be saved.")
+            raise bad_request("Submissions are closed. Cannot modify secret word.")
 
         stmt_chit = select(ChitMessage).where(
             ChitMessage.roundId == current_round.id,
@@ -184,7 +192,7 @@ class SubmissionService:
         current_round = res_round.scalars().first()
 
         if not current_round or current_round.status != RoundStatus.submissions_open:
-            raise bad_request("Submissions are currently closed. Cannot delete secret word.")
+            raise bad_request("Submissions are closed. Cannot delete secret word.")
 
         stmt_chit = select(ChitMessage).where(
             ChitMessage.roundId == current_round.id,

@@ -12,6 +12,7 @@ class Participant(Base):
     roomId = Column(String, ForeignKey("Room.id", ondelete="CASCADE"), nullable=False, index=True)
     displayName = Column(String, nullable=False)
     role = Column(SQLEnum(ParticipantRole, name="ParticipantRole", values_callable=lambda x: [e.value for e in x]), nullable=False)
+    score = Column(Integer, default=0, nullable=False)
     connected = Column(Boolean, default=False, nullable=False)
     removed = Column(Boolean, default=False, nullable=False)
     sessionVersion = Column(Integer, default=1, nullable=False)
