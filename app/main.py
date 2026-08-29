@@ -19,30 +19,37 @@ logging.basicConfig(
 )
 logger = logging.getLogger("chitguess")
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Run automatic schema migration on startup (ensures all tables/columns exist)
+    try:
+        from migrate_db import migrate
+        await migrate()
+        logger.info("Database schema verified/migrated on startup.")
+    except Exception as e:
+        logger.error(f"Startup schema migration warning: {e}")
+    yield
+
 # Create FastAPI app
 app = FastAPI(
     title="ChitGuess API",
     description="Multiplayer party game backend in Python FastAPI",
     version="1.0.0",
+    lifespan=lifespan,
     docs_url="/docs" if settings.is_dev else None,
     redoc_url="/redoc" if settings.is_dev else None,
 )
 
-# CORS Configuration
-origins = [
-    settings.FRONTEND_URL.rstrip("/"),
-    "http://localhost:5173",
-    "http://localhost:3000",
-]
-if settings.FRONTEND_URL == "*":
-    origins = ["*"]
-
+# CORS Configuration - permits localhost, 127.0.0.1, LAN IPs, and Vercel domains
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origin_regex=r"^https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # ----------------- Specific & Friendly Exception Handlers -----------------
