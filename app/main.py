@@ -4,11 +4,11 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError, OperationalError
 import socketio
 
 from app.config import settings
 from app.errors import AppError
-from app.schemas.common import ApiErrorResponse, ErrorDetail
 from app.api.v1_router import api_v1_router
 from app.sockets.server import sio
 
@@ -45,7 +45,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ----------------- Global Exception Handlers -----------------
+# ----------------- Specific & Friendly Exception Handlers -----------------
 
 @app.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError):
@@ -64,11 +64,25 @@ async def app_error_handler(request: Request, exc: AppError):
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, exc: RequestValidationError):
     field_errors = {}
+    primary_message = "Please check your inputs and try again."
+
     for err in exc.errors():
-        field_name = ".".join(str(loc) for loc in err["loc"] if loc not in ("body", "query", "path"))
-        if not field_name:
-            field_name = "general"
-        field_errors[field_name] = [err["msg"]]
+        loc = [str(x) for x in err.get("loc", []) if x not in ("body", "query", "path")]
+        field_name = loc[-1] if loc else "general"
+        msg = err.get("msg", "Invalid input value.")
+
+        # Translate technical validation messages to friendly human text
+        if "at least" in msg or "min_length" in msg:
+            friendly_msg = f"{field_name.replace('_', ' ').capitalize()} is too short."
+        elif "at most" in msg or "max_length" in msg:
+            friendly_msg = f"{field_name.replace('_', ' ').capitalize()} is too long."
+        elif "missing" in msg:
+            friendly_msg = f"{field_name.replace('_', ' ').capitalize()} is required."
+        else:
+            friendly_msg = msg
+
+        field_errors.setdefault(field_name, []).append(friendly_msg)
+        primary_message = friendly_msg
 
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -76,8 +90,65 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
             "success": False,
             "error": {
                 "code": "VALIDATION_ERROR",
-                "message": "Invalid request parameters.",
+                "message": primary_message,
                 "fieldErrors": field_errors,
+            }
+        }
+    )
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError):
+    logger.warning(f"Database Integrity constraint hit: {exc}")
+    orig_msg = str(getattr(exc, "orig", exc)).lower()
+
+    if "participant_roomid_displayname_key" in orig_msg or "unique constraint" in orig_msg:
+        message = "A player with this name is already in the room. Please choose a different name."
+        code = "DUPLICATE_NAME"
+    elif "room_code_key" in orig_msg:
+        message = "A room with this code already exists. Please try again."
+        code = "ROOM_CODE_COLLISION"
+    elif "chitmessage_roundid_senderid_key" in orig_msg:
+        message = "You have already submitted a secret word for this round."
+        code = "ALREADY_SUBMITTED"
+    else:
+        message = "A conflict occurred with existing room data. Please refresh and try again."
+        code = "CONFLICT"
+
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={
+            "success": False,
+            "error": {
+                "code": code,
+                "message": message,
+            }
+        }
+    )
+
+@app.exception_handler(OperationalError)
+async def operational_error_handler(request: Request, exc: OperationalError):
+    logger.error(f"Database connection operational error: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "success": False,
+            "error": {
+                "code": "DATABASE_UNAVAILABLE",
+                "message": "Database is temporarily reconnecting. Please retry your request in a few seconds.",
+            }
+        }
+    )
+
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError):
+    logger.error(f"Database error during request {request.method} {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "success": False,
+            "error": {
+                "code": "DATABASE_ERROR",
+                "message": "Unable to complete database operation. Please try again.",
             }
         }
     )
@@ -91,7 +162,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
             "success": False,
             "error": {
                 "code": "INTERNAL_ERROR",
-                "message": "Something went wrong on our end. Please try again.",
+                "message": "An unexpected error occurred while processing your request. Please try again.",
             }
         }
     )

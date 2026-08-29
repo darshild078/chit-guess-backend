@@ -97,7 +97,7 @@ class RoomService:
     ) -> RoomJoinedDTO:
         clean_code = (room_code or "").strip().upper()
         if not is_valid_room_code(clean_code):
-            raise bad_request("Invalid room code format. Please check and try again.")
+            raise bad_request("Invalid room code format. Room codes must be exactly 6 uppercase letters and numbers.")
 
         clean_name = sanitize_display_name(display_name)
         now = datetime.now(timezone.utc)
@@ -107,16 +107,16 @@ class RoomService:
         room = res.scalars().first()
 
         if not room:
-            raise not_found("Room not found. Please check your room code.")
+            raise not_found("Room not found. Please verify the 6-letter room code with the host.")
 
         if room.status == RoomStatus.ended:
-            raise bad_request("This room has ended. Please join an active room.")
+            raise bad_request("This room has ended. The host has concluded the game.")
 
         if room.expiresAt < now:
-            raise bad_request("This room has expired. Please create or join a new room.")
+            raise bad_request("This room has expired after 24 hours of inactivity. Please create or join a new room.")
 
         if room.locked:
-            raise bad_request("This room is currently locked by the host.")
+            raise bad_request("This room is currently locked by the host and cannot accept new players.")
 
         # Check existing participant by name in this room
         stmt_part = select(Participant).where(
@@ -128,7 +128,7 @@ class RoomService:
 
         if existing_part:
             if existing_part.removed:
-                raise bad_request("You have been removed from this room.")
+                raise bad_request("You have been removed from this room by the host and cannot rejoin.")
             
             # Reconnect existing participant
             existing_part.connected = True
@@ -161,7 +161,7 @@ class RoomService:
         current_count = count_res.scalar() or 0
 
         if current_count >= room.maxPlayers:
-            raise bad_request("Room is currently full. Please try joining another room.")
+            raise bad_request(f"This room is full (maximum limit of {room.maxPlayers} players reached).")
 
         new_id = generate_cuid()
         new_player = Participant(
@@ -196,24 +196,24 @@ class RoomService:
     async def check_availability(db: AsyncSession, room_code: str) -> RoomAvailabilityDTO:
         clean_code = (room_code or "").strip().upper()
         if not is_valid_room_code(clean_code):
-            return RoomAvailabilityDTO(available=False, reason="Invalid room code.")
+            return RoomAvailabilityDTO(available=False, reason="Invalid room code format.")
 
         stmt = select(Room).where(Room.code == clean_code)
         res = await db.execute(stmt)
         room = res.scalars().first()
 
         if not room:
-            return RoomAvailabilityDTO(available=False, reason="Room not found.")
+            return RoomAvailabilityDTO(available=False, reason="Room does not exist.")
 
         now = datetime.now(timezone.utc)
         if room.status == RoomStatus.ended:
-            return RoomAvailabilityDTO(available=False, reason="Room has ended.")
+            return RoomAvailabilityDTO(available=False, reason="This room has ended.")
 
         if room.expiresAt < now:
-            return RoomAvailabilityDTO(available=False, reason="Room has expired.")
+            return RoomAvailabilityDTO(available=False, reason="This room has expired.")
 
         if room.locked:
-            return RoomAvailabilityDTO(available=False, reason="Room is locked.")
+            return RoomAvailabilityDTO(available=False, reason="This room is currently locked.")
 
         stmt_count = select(func.count()).select_from(Participant).where(
             Participant.roomId == room.id,
@@ -224,7 +224,7 @@ class RoomService:
         current_count = count_res.scalar() or 0
 
         if current_count >= room.maxPlayers:
-            return RoomAvailabilityDTO(available=False, reason="Room is full.")
+            return RoomAvailabilityDTO(available=False, reason=f"Room is full ({room.maxPlayers} max players).")
 
         return RoomAvailabilityDTO(available=True)
 
@@ -238,7 +238,7 @@ class RoomService:
         room = res.scalars().first()
 
         if not room:
-            raise not_found("Room not found.")
+            raise not_found("Room not found. It may have been ended or deleted.")
 
         # Count active players
         stmt_count = select(func.count()).select_from(Participant).where(
