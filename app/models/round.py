@@ -14,6 +14,16 @@ class GameRound(Base):
     status = Column(SQLEnum(RoundStatus, name="RoundStatus", values_callable=lambda x: [e.value for e in x]), default=RoundStatus.waiting, nullable=False)
     aliasEpoch = Column(Integer, default=0, nullable=False)
     identitiesRevealed = Column(Boolean, default=False, nullable=False)
+    
+    # Mode-specific round parameters
+    prompt = Column(String, nullable=True)
+    secretTopic = Column(String, nullable=True)
+    secretWord = Column(String, nullable=True)
+    chameleonParticipantId = Column(String, nullable=True)
+    wordChoices = Column(String, nullable=True) # Comma-separated or JSON list of 4 choices
+    chameleonEscaped = Column(Boolean, default=False, nullable=True)
+    chameleonGuessedWord = Column(Boolean, default=False, nullable=True)
+
     submissionsOpenedAt = Column(DateTime(timezone=True), nullable=True)
     submissionsClosedAt = Column(DateTime(timezone=True), nullable=True)
     revealedAt = Column(DateTime(timezone=True), nullable=True)

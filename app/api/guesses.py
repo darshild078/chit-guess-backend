@@ -8,6 +8,7 @@ from app.schemas.common import ApiResponse
 from app.schemas.guess import (
     RoundWordDTO,
     SubmitGuessesRequest,
+    ChameleonGuessWordRequest,
     RoundResultsDTO,
 )
 from app.schemas.participant import LeaderboardItemDTO
@@ -52,6 +53,26 @@ async def submit_guesses(
     return ApiResponse(
         data={"lockedIn": True},
         message="Guesses locked in! Waiting for other players..."
+    )
+
+@router.post("/round/chameleon-guess", response_model=ApiResponse[dict])
+async def chameleon_guess_word(
+    payload: ChameleonGuessWordRequest,
+    roomId: str = Path(...),
+    participant: Participant = Depends(require_room_member),
+    db: AsyncSession = Depends(get_db)
+):
+    is_correct = await GuessService.submit_chameleon_word_guess(db, participant.id, roomId, payload.word)
+    # Refresh results and broadcast
+    results = await GuessService.calculate_and_reveal_scores(db, roomId)
+    if results.isFinalRound:
+        await emit_game_completed(roomId, results.model_dump(mode="json"))
+    else:
+        await emit_round_revealed(roomId, results.model_dump(mode="json"))
+
+    return ApiResponse(
+        data={"isCorrect": is_correct},
+        message="Correct! You stole the secret word!" if is_correct else "Incorrect! The secret word was not guessed."
     )
 
 @router.get("/round/results", response_model=ApiResponse[RoundResultsDTO])

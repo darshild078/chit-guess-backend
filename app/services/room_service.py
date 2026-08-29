@@ -26,7 +26,10 @@ class RoomService:
         host_display_name: str,
         title: Optional[str] = None,
         max_players: int = 10,
-        total_rounds: int = 3
+        total_rounds: int = 3,
+        game_mode: str = "confessions",
+        prompt_category: str = "general",
+        custom_prompt: Optional[str] = None
     ) -> RoomCreatedDTO:
         clean_name = sanitize_display_name(host_display_name)
         now = datetime.now(timezone.utc)
@@ -53,6 +56,9 @@ class RoomService:
             ownerParticipantId=owner_id,
             maxPlayers=max_players,
             totalRounds=total_rounds,
+            gameMode=game_mode or "confessions",
+            promptCategory=prompt_category or "general",
+            customPrompt=custom_prompt.strip() if custom_prompt else None,
             locked=False,
             currentRoundNumber=0,
             expiresAt=expires_at,
@@ -90,7 +96,8 @@ class RoomService:
             participantId=owner_id,
             token=token,
             role=ParticipantRole.owner.value,
-            totalRounds=total_rounds
+            totalRounds=total_rounds,
+            gameMode=room.gameMode
         )
 
     @staticmethod
@@ -260,6 +267,9 @@ class RoomService:
                 status=room.status.value,
                 currentRoundNumber=room.currentRoundNumber,
                 totalRounds=room.totalRounds,
+                gameMode=room.gameMode or "confessions",
+                promptCategory=room.promptCategory or "general",
+                customPrompt=room.customPrompt,
                 playerCount=player_count,
                 maxPlayers=room.maxPlayers,
                 locked=room.locked,
@@ -282,6 +292,9 @@ class RoomService:
                 status=room.status.value,
                 currentRoundNumber=room.currentRoundNumber,
                 totalRounds=room.totalRounds,
+                gameMode=room.gameMode or "confessions",
+                promptCategory=room.promptCategory or "general",
+                customPrompt=room.customPrompt,
                 playerCount=player_count,
                 maxPlayers=room.maxPlayers,
                 locked=room.locked,
@@ -311,7 +324,15 @@ class RoomService:
         return locked
 
     @staticmethod
-    async def update_settings(db: AsyncSession, room_id: str, total_rounds: Optional[int], max_players: Optional[int]) -> Room:
+    async def update_settings(
+        db: AsyncSession,
+        room_id: str,
+        total_rounds: Optional[int] = None,
+        max_players: Optional[int] = None,
+        game_mode: Optional[str] = None,
+        prompt_category: Optional[str] = None,
+        custom_prompt: Optional[str] = None
+    ) -> Room:
         stmt = select(Room).where(Room.id == room_id)
         res = await db.execute(stmt)
         room = res.scalars().first()
@@ -322,6 +343,12 @@ class RoomService:
             room.totalRounds = total_rounds
         if max_players is not None:
             room.maxPlayers = max_players
+        if game_mode is not None:
+            room.gameMode = game_mode
+        if prompt_category is not None:
+            room.promptCategory = prompt_category
+        if custom_prompt is not None:
+            room.customPrompt = custom_prompt.strip() if custom_prompt else None
 
         db.add(room)
         await db.flush()

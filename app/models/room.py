@@ -16,6 +16,9 @@ class Room(Base):
     maxPlayers = Column(Integer, default=10, nullable=False)
     totalRounds = Column(Integer, default=3, nullable=False)
     timerSeconds = Column(Integer, default=60, nullable=False)
+    gameMode = Column(String, default="confessions", nullable=False)  # "confessions", "chameleon", "roasts"
+    promptCategory = Column(String, default="general", nullable=False) # "general", "school", "embarrassing", "spicy", "pleasures", "custom"
+    customPrompt = Column(String, nullable=True)
     locked = Column(Boolean, default=False, nullable=False)
     currentRoundNumber = Column(Integer, default=0, nullable=False)
     expiresAt = Column(DateTime(timezone=True), nullable=False)

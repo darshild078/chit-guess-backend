@@ -10,11 +10,22 @@ from app.schemas.submission import (
     EditChitRequest,
     MySubmissionDTO,
     SubmissionStatusDTO,
+    RoundPromptInfoDTO,
 )
 from app.services.submission_service import SubmissionService
+from app.services.round_service import RoundService
 from app.sockets.emitters import emit_player_activity_updated, emit_submission_status
 
 router = APIRouter(prefix="/rooms/{roomId}/submission", tags=["Submissions"])
+
+@router.get("/prompt", response_model=ApiResponse[RoundPromptInfoDTO])
+async def get_round_prompt(
+    roomId: str = Path(...),
+    participant: Participant = Depends(require_room_member),
+    db: AsyncSession = Depends(get_db)
+):
+    info = await RoundService.get_round_prompt_info(db, roomId, participant.id)
+    return ApiResponse(data=info)
 
 @router.get("", response_model=ApiResponse[Optional[MySubmissionDTO]])
 @router.get("/", response_model=ApiResponse[Optional[MySubmissionDTO]])
@@ -51,7 +62,7 @@ async def submit_chit(
         "canDelete": True,
         "canSubmit": False
     })
-    return ApiResponse(data=submission, message="Secret word submitted successfully.")
+    return ApiResponse(data=submission, message="Submitted successfully!")
 
 @router.patch("", response_model=ApiResponse[MySubmissionDTO])
 @router.patch("/", response_model=ApiResponse[MySubmissionDTO])
@@ -63,7 +74,7 @@ async def edit_chit(
 ):
     submission = await SubmissionService.edit_chit(db, participant.id, roomId, payload.body)
     await emit_player_activity_updated(roomId)
-    return ApiResponse(data=submission, message="Secret word updated.")
+    return ApiResponse(data=submission, message="Updated successfully.")
 
 @router.delete("", response_model=ApiResponse[dict])
 @router.delete("/", response_model=ApiResponse[dict])
@@ -80,4 +91,4 @@ async def delete_chit(
         "canDelete": False,
         "canSubmit": True
     })
-    return ApiResponse(data={"deleted": True}, message="Secret word deleted.")
+    return ApiResponse(data={"deleted": True}, message="Deleted successfully.")

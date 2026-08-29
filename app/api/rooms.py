@@ -49,9 +49,12 @@ async def create_room(
         host_display_name=payload.hostDisplayName,
         title=payload.title,
         max_players=payload.maxPlayers,
-        total_rounds=payload.totalRounds
+        total_rounds=payload.totalRounds,
+        game_mode=payload.gameMode,
+        prompt_category=payload.promptCategory,
+        custom_prompt=payload.customPrompt
     )
-    return ApiResponse(data=result, message=f"Room created successfully! ({payload.totalRounds} rounds).")
+    return ApiResponse(data=result, message=f"Room created successfully! Mode: {payload.gameMode.capitalize()}.")
 
 @router.post("/join", response_model=ApiResponse[RoomJoinedDTO])
 async def join_room(
@@ -90,10 +93,18 @@ async def update_settings(
     participant: Participant = Depends(require_owner),
     db: AsyncSession = Depends(get_db)
 ):
-    room = await RoomService.update_settings(db, roomId, payload.totalRounds, payload.maxPlayers)
+    room = await RoomService.update_settings(
+        db,
+        roomId,
+        total_rounds=payload.totalRounds,
+        max_players=payload.maxPlayers,
+        game_mode=payload.gameMode,
+        prompt_category=payload.promptCategory,
+        custom_prompt=payload.customPrompt
+    )
     await emit_room_state_updated(roomId)
     return ApiResponse(
-        data={"totalRounds": room.totalRounds, "maxPlayers": room.maxPlayers},
+        data={"totalRounds": room.totalRounds, "maxPlayers": room.maxPlayers, "gameMode": room.gameMode},
         message="Room settings updated successfully."
     )
 
@@ -127,7 +138,7 @@ async def start_round(
     new_round = await RoundService.start_round(db, roomId)
     await emit_room_state_updated(roomId)
     await emit_player_activity_updated(roomId)
-    return ApiResponse(data={"roundNumber": new_round.roundNumber}, message=f"Round {new_round.roundNumber} started! Enter your secret words.")
+    return ApiResponse(data={"roundNumber": new_round.roundNumber}, message=f"Round {new_round.roundNumber} started!")
 
 @router.post("/{roomId}/next-round", response_model=ApiResponse[dict])
 async def start_next_round(
@@ -138,7 +149,7 @@ async def start_next_round(
     new_round = await RoundService.start_round(db, roomId)
     await emit_room_state_updated(roomId)
     await emit_player_activity_updated(roomId)
-    return ApiResponse(data={"roundNumber": new_round.roundNumber}, message=f"Round {new_round.roundNumber} started! Enter your secret words.")
+    return ApiResponse(data={"roundNumber": new_round.roundNumber}, message=f"Round {new_round.roundNumber} started!")
 
 @router.get("/{roomId}/players", response_model=ApiResponse[List[HostManagePlayerDTO]])
 async def get_players(

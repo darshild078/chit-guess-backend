@@ -75,3 +75,22 @@ async def disconnect(sid: str):
             await emit_player_activity_updated(room_id)
     except Exception as e:
         logger.error(f"Error handling socket disconnect: {e}")
+
+@sio.on("reaction:send")
+async def handle_reaction(sid: str, data: dict):
+    try:
+        session = await sio.get_session(sid)
+        if not session:
+            return
+
+        room_id = session.get("roomId")
+        participant_id = session.get("participantId")
+        emoji = data.get("emoji", "🔥")
+
+        if room_id:
+            await sio.emit("reaction:received", {
+                "emoji": emoji,
+                "senderId": participant_id,
+            }, room=f"room:{room_id}")
+    except Exception as e:
+        logger.error(f"Error broadcasting reaction: {e}")

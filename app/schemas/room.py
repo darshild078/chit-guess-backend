@@ -7,6 +7,9 @@ class CreateRoomRequest(BaseModel):
     title: Optional[str] = Field(default=None, max_length=50)
     maxPlayers: int = Field(default=10, ge=2, le=30)
     totalRounds: int = Field(default=3, ge=1, le=10)
+    gameMode: str = Field(default="confessions") # "confessions", "chameleon", "roasts"
+    promptCategory: str = Field(default="general")
+    customPrompt: Optional[str] = Field(default=None, max_length=150)
 
 class JoinRoomRequest(BaseModel):
     roomCode: str = Field(min_length=6, max_length=6)
@@ -18,6 +21,9 @@ class LockRoomRequest(BaseModel):
 class UpdateRoomSettingsRequest(BaseModel):
     totalRounds: Optional[int] = Field(default=None, ge=1, le=10)
     maxPlayers: Optional[int] = Field(default=None, ge=2, le=30)
+    gameMode: Optional[str] = Field(default=None)
+    promptCategory: Optional[str] = Field(default=None)
+    customPrompt: Optional[str] = Field(default=None)
 
 class RoomCreatedDTO(BaseModel):
     roomId: str
@@ -26,6 +32,7 @@ class RoomCreatedDTO(BaseModel):
     token: str
     role: str = "owner"
     totalRounds: int = 3
+    gameMode: str = "confessions"
 
 class RoomJoinedDTO(BaseModel):
     roomId: str
@@ -44,6 +51,9 @@ class HostRoomViewDTO(BaseModel):
     status: str
     currentRoundNumber: int
     totalRounds: int
+    gameMode: str = "confessions"
+    promptCategory: str = "general"
+    customPrompt: Optional[str] = None
     playerCount: int
     maxPlayers: int
     locked: bool
@@ -57,6 +67,9 @@ class PlayerRoomViewDTO(BaseModel):
     status: str
     currentRoundNumber: int
     totalRounds: int
+    gameMode: str = "confessions"
+    promptCategory: str = "general"
+    customPrompt: Optional[str] = None
     playerCount: int
     maxPlayers: int
     locked: bool

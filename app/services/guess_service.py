@@ -1,4 +1,5 @@
 from typing import List, Dict, Any, Optional
+from collections import Counter
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
 from app.models.chit import ChitMessage
@@ -13,6 +14,7 @@ from app.schemas.guess import (
     RoundResultsDTO,
     RoundRevealDetailDTO,
     GuessSummaryItem,
+    PlayerBadgeDTO,
 )
 from app.schemas.participant import LeaderboardItemDTO
 from app.utils.cuid import generate_cuid
@@ -36,15 +38,27 @@ class GuessService:
         if not current_round:
             return []
 
+        stmt_room = select(Room).where(Room.id == room_id)
+        res_room = await db.execute(stmt_room)
+        room = res_room.scalars().first()
+        game_mode = room.gameMode if room else "confessions"
+
         stmt_chits = select(ChitMessage).where(ChitMessage.roundId == current_round.id)
         res_chits = await db.execute(stmt_chits)
         chits = list(res_chits.scalars().all())
 
+        stmt_p = select(Participant).where(Participant.roomId == room_id)
+        res_p = await db.execute(stmt_p)
+        participants = {p.id: p.displayName for p in res_p.scalars().all()}
+
+        # For Chameleon mode, we reveal author display name with the clue!
+        # For Confessions / Roasts, authors are hidden until reveal.
         return [
             RoundWordDTO(
                 chitId=c.id,
                 body=c.body,
-                isOwnWord=(c.senderId == participant_id)
+                isOwnWord=(c.senderId == participant_id),
+                authorDisplayName=participants.get(c.senderId) if game_mode == "chameleon" else None
             )
             for c in chits
         ]
@@ -67,7 +81,7 @@ class GuessService:
         if not current_round or current_round.status != RoundStatus.guessing:
             raise bad_request("Guessing is not open for this round.")
 
-        # Clear any prior guesses for this participant in this round
+        # Clear prior guesses
         stmt_del = delete(RoundGuess).where(
             RoundGuess.roundId == current_round.id,
             RoundGuess.guesserId == participant_id
@@ -83,6 +97,7 @@ class GuessService:
                 chitId=g.chitId,
                 guessedSenderId=g.guessedParticipantId,
                 isCorrect=False,
+                isDoubleDown=bool(g.isDoubleDown),
             )
             db.add(guess_record)
 
@@ -90,8 +105,44 @@ class GuessService:
         return True
 
     @staticmethod
+    async def submit_chameleon_word_guess(
+        db: AsyncSession,
+        participant_id: str,
+        room_id: str,
+        guessed_word: str
+    ) -> bool:
+        stmt_round = (
+            select(GameRound)
+            .where(GameRound.roomId == room_id)
+            .order_by(GameRound.roundNumber.desc())
+        )
+        res_round = await db.execute(stmt_round)
+        current_round = res_round.scalars().first()
+
+        if not current_round:
+            raise not_found("No active round.")
+
+        if current_round.chameleonParticipantId != participant_id:
+            raise bad_request("Only the Chameleon can make a Last Stand word guess.")
+
+        is_correct = bool(current_round.secretWord and current_round.secretWord.strip().lower() == guessed_word.strip().lower())
+        current_round.chameleonGuessedWord = is_correct
+
+        if is_correct:
+            # Award +150 bonus to Chameleon for stealing the word!
+            stmt_p = select(Participant).where(Participant.id == participant_id)
+            res_p = await db.execute(stmt_p)
+            cham = res_p.scalars().first()
+            if cham:
+                cham.score += 150
+                db.add(cham)
+
+        db.add(current_round)
+        await db.flush()
+        return is_correct
+
+    @staticmethod
     async def check_all_guesses_submitted(db: AsyncSession, room_id: str) -> bool:
-        """Check if all connected, active participants have submitted guesses for current round."""
         stmt_round = (
             select(GameRound)
             .where(GameRound.roomId == room_id)
@@ -103,7 +154,6 @@ class GuessService:
         if not current_round or current_round.status != RoundStatus.guessing:
             return False
 
-        # Active participants count
         stmt_active = select(func.count()).select_from(Participant).where(
             Participant.roomId == room_id,
             Participant.removed == False,
@@ -115,7 +165,6 @@ class GuessService:
         if total_active <= 1:
             return True
 
-        # Count unique guessers for current round
         stmt_guessers = select(func.count(func.distinct(RoundGuess.guesserId))).where(
             RoundGuess.roundId == current_round.id
         )
@@ -140,47 +189,141 @@ class GuessService:
         stmt_room = select(Room).where(Room.id == room_id)
         res_room = await db.execute(stmt_room)
         room = res_room.scalars().first()
+        game_mode = room.gameMode if room else "confessions"
 
-        # Fetch all participants for name and score mapping
+        # Fetch participants
         stmt_p = select(Participant).where(Participant.roomId == room_id)
         res_p = await db.execute(stmt_p)
         participants = list(res_p.scalars().all())
         participant_map = {p.id: p for p in participants}
 
-        # Fetch all chits for this round
+        # Fetch chits for this round
         stmt_chits = select(ChitMessage).where(ChitMessage.roundId == current_round.id)
         res_chits = await db.execute(stmt_chits)
         chits = list(res_chits.scalars().all())
         chit_author_map = {c.id: c.senderId for c in chits}
 
-        # Fetch all guesses for this round
+        # Fetch guesses for this round
         stmt_guesses = select(RoundGuess).where(RoundGuess.roundId == current_round.id)
         res_guesses = await db.execute(stmt_guesses)
         guesses = list(res_guesses.scalars().all())
 
-        # If not already revealed, calculate +100 pts per correct guess
+        chameleon_caught = False
+        chameleon_escaped = False
+
         if not current_round.identitiesRevealed:
-            for g in guesses:
-                real_author_id = chit_author_map.get(g.chitId)
-                if real_author_id and g.guessedSenderId == real_author_id:
-                    g.isCorrect = True
-                    guesser = participant_map.get(g.guesserId)
-                    if guesser:
-                        guesser.score += 100
-                        db.add(guesser)
-                db.add(g)
+            # ----------------------------------------------------
+            # MODE 1: SECRET CONFESSIONS SCORING
+            # ----------------------------------------------------
+            if game_mode == "confessions":
+                # Track how many people guessed each author for Stealth Bonus
+                guesses_per_author = Counter()
+
+                for g in guesses:
+                    real_author_id = chit_author_map.get(g.chitId)
+                    if real_author_id:
+                        if g.guessedSenderId == real_author_id:
+                            g.isCorrect = True
+                            guesses_per_author[real_author_id] += 1
+                            guesser = participant_map.get(g.guesserId)
+                            if guesser:
+                                pts = 200 if g.isDoubleDown else 100
+                                guesser.score += pts
+                                db.add(guesser)
+                        else:
+                            g.isCorrect = False
+                            if g.isDoubleDown:
+                                guesser = participant_map.get(g.guesserId)
+                                if guesser:
+                                    guesser.score = max(0, guesser.score - 50)
+                                    db.add(guesser)
+                    db.add(g)
+
+                # Stealth Bonus (+150 pts if 0 people guessed you)
+                for c in chits:
+                    if guesses_per_author[c.senderId] == 0:
+                        author = participant_map.get(c.senderId)
+                        if author and len(participants) > 1:
+                            author.score += 150
+                            db.add(author)
+
+            # ----------------------------------------------------
+            # MODE 2: THE CHAMELEON SCORING
+            # ----------------------------------------------------
+            elif game_mode == "chameleon":
+                cham_id = current_round.chameleonParticipantId
+                vote_counts = Counter()
+
+                for g in guesses:
+                    # guessedSenderId is the vote for who the Chameleon is
+                    vote_counts[g.guessedSenderId] += 1
+
+                # Most voted player
+                most_voted_id = None
+                if vote_counts:
+                    most_voted_id, highest_votes = vote_counts.most_common(1)[0]
+
+                if most_voted_id == cham_id and highest_votes > 0:
+                    chameleon_caught = True
+                    # Reward players who correctly voted for the Chameleon
+                    for g in guesses:
+                        if g.guessedSenderId == cham_id:
+                            g.isCorrect = True
+                            guesser = participant_map.get(g.guesserId)
+                            if guesser:
+                                pts = 200 if g.isDoubleDown else 100
+                                guesser.score += pts
+                                db.add(guesser)
+                        db.add(g)
+                else:
+                    chameleon_escaped = True
+                    # Chameleon escaped! Reward Chameleon +200 pts
+                    cham_player = participant_map.get(cham_id)
+                    if cham_player:
+                        cham_player.score += 200
+                        db.add(cham_player)
+
+                current_round.chameleonEscaped = chameleon_escaped
+
+            # ----------------------------------------------------
+            # MODE 3: FRIEND ROASTS SCORING
+            # ----------------------------------------------------
+            elif game_mode == "roasts":
+                # guessedSenderId is the vote for favorite roast author
+                votes_per_author = Counter()
+
+                for g in guesses:
+                    votes_per_author[g.guessedSenderId] += 1
+
+                # Award +100 pts per vote received to the roast author
+                for author_id, vote_cnt in votes_per_author.items():
+                    author = participant_map.get(author_id)
+                    if author:
+                        author.score += (vote_cnt * 100)
+                        db.add(author)
+
+                # Bonus +100 to the #1 most voted roast
+                if votes_per_author:
+                    top_author_id, _ = votes_per_author.most_common(1)[0]
+                    top_author = participant_map.get(top_author_id)
+                    if top_author:
+                        top_author.score += 100
+                        db.add(top_author)
 
             current_round.identitiesRevealed = True
             current_round.status = RoundStatus.revealed
             db.add(current_round)
 
             if room:
-                room.status = RoomStatus.revealed
+                if room.currentRoundNumber >= room.totalRounds:
+                    room.status = RoomStatus.completed
+                else:
+                    room.status = RoomStatus.revealed
                 db.add(room)
 
             await db.flush()
 
-        # Build reveal details per chit
+        # Build reveal details
         chits_detail: List[RoundRevealDetailDTO] = []
         for c in chits:
             author = participant_map.get(c.senderId)
@@ -188,9 +331,11 @@ class GuessService:
 
             correct_guesser_names = []
             guesses_summary = []
+            votes_count = 0
 
             for g in guesses:
-                if g.chitId == c.id:
+                # Match chit guesses or author votes
+                if g.chitId == c.id or (game_mode == "roasts" and g.guessedSenderId == c.senderId):
                     guesser = participant_map.get(g.guesserId)
                     guessed_player = participant_map.get(g.guessedSenderId)
                     guesser_name = guesser.displayName if guesser else "Player"
@@ -199,12 +344,15 @@ class GuessService:
                     is_corr = (g.guessedSenderId == c.senderId)
                     if is_corr:
                         correct_guesser_names.append(guesser_name)
+                    if g.guessedSenderId == c.senderId:
+                        votes_count += 1
 
                     guesses_summary.append(
                         GuessSummaryItem(
                             guesserName=guesser_name,
                             guessedPlayerName=guessed_name,
-                            isCorrect=is_corr
+                            isCorrect=is_corr,
+                            isDoubleDown=bool(g.isDoubleDown)
                         )
                     )
 
@@ -215,20 +363,91 @@ class GuessService:
                     authorParticipantId=c.senderId,
                     authorDisplayName=author_name,
                     correctGuessers=correct_guesser_names,
-                    guessesSummary=guesses_summary
+                    guessesSummary=guesses_summary,
+                    stealthBonusAwarded=(len(correct_guesser_names) == 0 and len(participants) > 1),
+                    votesCount=votes_count
                 )
             )
 
         leaderboard = await GuessService.get_leaderboard(db, room_id)
         is_final = bool(room and current_round.roundNumber >= room.totalRounds)
 
+        # Build Awards Badges if this is the final round
+        awards: List[PlayerBadgeDTO] = []
+        if is_final and len(leaderboard) > 0:
+            awards = await GuessService.generate_awards(db, room_id, leaderboard)
+
+        cham_author = participant_map.get(current_round.chameleonParticipantId)
+        cham_name = cham_author.displayName if cham_author else None
+
         return RoundResultsDTO(
             roundNumber=current_round.roundNumber,
             totalRounds=room.totalRounds if room else 3,
             isFinalRound=is_final,
+            gameMode=game_mode,
+            prompt=current_round.prompt,
+            secretTopic=current_round.secretTopic,
+            secretWord=current_round.secretWord,
+            chameleonParticipantId=current_round.chameleonParticipantId,
+            chameleonDisplayName=cham_name,
+            chameleonCaught=chameleon_caught,
+            chameleonEscaped=current_round.chameleonEscaped,
+            chameleonGuessedWord=current_round.chameleonGuessedWord,
             chits=chits_detail,
-            leaderboard=leaderboard
+            leaderboard=leaderboard,
+            awards=awards
         )
+
+    @staticmethod
+    async def generate_awards(
+        db: AsyncSession, room_id: str, leaderboard: List[LeaderboardItemDTO]
+    ) -> List[PlayerBadgeDTO]:
+        """Generates funny, playful badges for the final podium ceremony."""
+        badges: List[PlayerBadgeDTO] = []
+        if not leaderboard:
+            return badges
+
+        top_player = leaderboard[0]
+        badges.append(
+            PlayerBadgeDTO(
+                badgeId="mind_reader",
+                title="The Mind Reader",
+                emoji="🧠",
+                description="Highest overall score and deduction mastery!",
+                recipientDisplayName=top_player.displayName,
+                recipientParticipantId=top_player.participantId,
+            )
+        )
+
+        if len(leaderboard) >= 2:
+            # Runner up: Puppet Master
+            runner_up = leaderboard[1]
+            badges.append(
+                PlayerBadgeDTO(
+                    badgeId="puppet_master",
+                    title="The Puppet Master",
+                    emoji="🎭",
+                    description="Fooled the room and bluffed like a champion!",
+                    recipientDisplayName=runner_up.displayName,
+                    recipientParticipantId=runner_up.participantId,
+                )
+            )
+
+        if len(leaderboard) >= 3:
+            # Bronze: Chaos Agent
+            third = leaderboard[-1]
+            badges.append(
+                PlayerBadgeDTO(
+                    badgeId="chaos_agent",
+                    title="The Chaos Agent",
+                    emoji="💣",
+                    description="Created absolute mayhem and kept everyone guessing!",
+                    recipientDisplayName=third.displayName,
+                    recipientParticipantId=third.participantId,
+                )
+            )
+
+        return badges
 
     @staticmethod
     async def get_leaderboard(db: AsyncSession, room_id: str) -> List[LeaderboardItemDTO]:
