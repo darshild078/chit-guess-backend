@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, Enum as SQLEnum, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
+from app.core.constants import ParticipantRole
 from app.models.base import Base
-from app.models.enums import ParticipantRole
 from app.utils.cuid import generate_cuid
 
 class Participant(Base):

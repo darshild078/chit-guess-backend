@@ -1,8 +1,5 @@
 import secrets
-
-# Excludes ambiguous characters (0, O, 1, I)
-ALLOWED_ROOM_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-ROOM_CODE_LENGTH = 6
+from app.core.constants import ALLOWED_ROOM_CHARS, ROOM_CODE_LENGTH
 
 def generate_room_code() -> str:
     """Generate a random 6-character room code."""

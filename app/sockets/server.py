@@ -1,5 +1,5 @@
 import socketio
-from app.config import settings
+from app.core.config import settings
 
 # Initialize Async Socket.IO server with CORS enabled
 sio = socketio.AsyncServer(

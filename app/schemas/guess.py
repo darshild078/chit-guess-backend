@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from pydantic import BaseModel, Field
 from app.schemas.participant import LeaderboardItemDTO
 
@@ -9,7 +9,7 @@ class RoundWordDTO(BaseModel):
     authorDisplayName: Optional[str] = None  # Populated in Chameleon mode
 
 class ChitGuessItem(BaseModel):
-    chitId: Optional[str] = None # Optional for chameleon player voting
+    chitId: Optional[str] = None  # Optional for chameleon player voting
     guessedParticipantId: str
     isDoubleDown: bool = False
 
@@ -33,7 +33,7 @@ class RoundRevealDetailDTO(BaseModel):
     correctGuessers: List[str]
     guessesSummary: List[GuessSummaryItem]
     stealthBonusAwarded: bool = False
-    votesCount: int = 0 # For Roast mode
+    votesCount: int = 0  # For Roast mode
 
 class PlayerBadgeDTO(BaseModel):
     badgeId: str
@@ -59,3 +59,9 @@ class RoundResultsDTO(BaseModel):
     chits: List[RoundRevealDetailDTO]
     leaderboard: List[LeaderboardItemDTO]
     awards: List[PlayerBadgeDTO] = []
+
+class SubmitGuessesResponseDTO(BaseModel):
+    lockedIn: bool = True
+
+class ChameleonGuessResponseDTO(BaseModel):
+    isCorrect: bool

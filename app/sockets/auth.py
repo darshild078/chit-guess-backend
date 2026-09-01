@@ -1,6 +1,6 @@
 from typing import Optional, Dict, Any
 from urllib.parse import parse_qs
-from app.utils.jwt_helper import verify_participant_token
+from app.core.security import verify_participant_token
 
 def authenticate_socket(environ: dict, auth: Optional[dict] = None) -> Optional[Dict[str, Any]]:
     """

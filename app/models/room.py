@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, Enum as SQLEnum
 from sqlalchemy.orm import relationship
+from app.core.constants import RoomStatus
 from app.models.base import Base
-from app.models.enums import RoomStatus
 from app.utils.cuid import generate_cuid
 
 class Room(Base):

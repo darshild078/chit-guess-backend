@@ -1,10 +1,13 @@
 import logging
-from app.sockets.server import sio
-from app.database import AsyncSessionLocal
-from app.services.submission_service import SubmissionService
+from app.core.database import AsyncSessionLocal
+from app.core.logging import logger
+from app.services.submission_service import (
+    delete_chit,
+    edit_chit,
+    submit_chit,
+)
 from app.sockets.emitters import emit_player_activity_updated, emit_submission_status
-
-logger = logging.getLogger(__name__)
+from app.sockets.server import sio
 
 @sio.on("submission:submit")
 async def handle_submit(sid: str, data: dict):
@@ -18,16 +21,8 @@ async def handle_submit(sid: str, data: dict):
         body = data.get("body", "")
 
         async with AsyncSessionLocal() as db:
-            submission = await SubmissionService.submit_chit(db, participant_id, room_id, body)
+            await submit_chit(db, participant_id, room_id, body)
             await db.commit()
-
-        await emit_player_activity_updated(room_id)
-        await emit_submission_status(participant_id, {
-            "hasSubmitted": True,
-            "canEdit": True,
-            "canDelete": True,
-            "canSubmit": False
-        })
     except Exception as e:
         logger.error(f"Socket submit error: {e}")
 
@@ -43,10 +38,8 @@ async def handle_edit(sid: str, data: dict):
         body = data.get("body", "")
 
         async with AsyncSessionLocal() as db:
-            submission = await SubmissionService.edit_chit(db, participant_id, room_id, body)
+            await edit_chit(db, participant_id, room_id, body)
             await db.commit()
-
-        await emit_player_activity_updated(room_id)
     except Exception as e:
         logger.error(f"Socket edit error: {e}")
 
@@ -61,15 +54,7 @@ async def handle_delete(sid: str, data: dict = None):
         room_id = session.get("roomId")
 
         async with AsyncSessionLocal() as db:
-            await SubmissionService.delete_chit(db, participant_id, room_id)
+            await delete_chit(db, participant_id, room_id)
             await db.commit()
-
-        await emit_player_activity_updated(room_id)
-        await emit_submission_status(participant_id, {
-            "hasSubmitted": False,
-            "canEdit": False,
-            "canDelete": False,
-            "canSubmit": True
-        })
     except Exception as e:
         logger.error(f"Socket delete error: {e}")

@@ -1,6 +1,6 @@
 import pytest
 from app.utils.cuid import generate_cuid
-from app.utils.jwt_helper import sign_participant_token, verify_participant_token
+from app.core.security import sign_participant_token, verify_participant_token
 
 def test_token_creation():
     token = sign_participant_token("p1", "r1", "player", 1)

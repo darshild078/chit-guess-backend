@@ -21,3 +21,9 @@ class AnonymousInboxDTO(BaseModel):
     roundNumber: int
     aliasEpoch: int
     chits: List[AnonymousChitDTO]
+
+class MarkChitReadDTO(BaseModel):
+    isRead: bool
+
+class MarkChitGuessedDTO(BaseModel):
+    isGuessed: bool

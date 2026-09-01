@@ -1,6 +1,6 @@
 import pytest
-from app.utils.jwt_helper import sign_participant_token, verify_participant_token
-from app.errors import AppError
+from app.core.exceptions import AppException
+from app.core.security import sign_participant_token, verify_participant_token
 
 def test_jwt_sign_and_verify():
     token = sign_participant_token("part_123", "room_456", "owner", 1)
@@ -12,5 +12,5 @@ def test_jwt_sign_and_verify():
     assert payload["sessionVersion"] == 1
 
 def test_jwt_invalid_token():
-    with pytest.raises(AppError):
+    with pytest.raises(AppException):
         verify_participant_token("invalid.token.string")

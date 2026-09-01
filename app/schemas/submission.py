@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 class SubmitChitRequest(BaseModel):
@@ -28,3 +28,6 @@ class RoundPromptInfoDTO(BaseModel):
     secretWord: Optional[str] = None  # None if player is Chameleon!
     isChameleon: bool = False
     wordChoices: List[str] = []
+
+class DeleteChitDTO(BaseModel):
+    deleted: bool = True

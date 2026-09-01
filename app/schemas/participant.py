@@ -31,3 +31,6 @@ class HostManagePlayerDTO(BaseModel):
     alias: str
     connected: bool
     hasSubmitted: bool
+
+class RemovePlayerDTO(BaseModel):
+    removed: bool = True

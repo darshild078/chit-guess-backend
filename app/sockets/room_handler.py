@@ -1,12 +1,10 @@
 import logging
-from sqlalchemy import select
-from app.sockets.server import sio
+from app.core.database import AsyncSessionLocal
+from app.core.logging import logger
+from app.services.participant_service import set_participant_connection_status
 from app.sockets.auth import authenticate_socket
 from app.sockets.emitters import emit_player_activity_updated
-from app.database import AsyncSessionLocal
-from app.models.participant import Participant
-
-logger = logging.getLogger(__name__)
+from app.sockets.server import sio
 
 @sio.event
 async def connect(sid: str, environ: dict, auth: dict = None):
@@ -34,16 +32,11 @@ async def connect(sid: str, environ: dict, auth: dict = None):
     else:
         await sio.enter_room(sid, f"role:{room_id}:players")
 
-    # Mark participant connected in DB
+    # Mark participant connected via service
     try:
         async with AsyncSessionLocal() as db:
-            stmt = select(Participant).where(Participant.id == participant_id)
-            res = await db.execute(stmt)
-            participant = res.scalars().first()
-            if participant:
-                participant.connected = True
-                db.add(participant)
-                await db.commit()
+            await set_participant_connection_status(db, participant_id, connected=True)
+            await db.commit()
 
         await emit_player_activity_updated(room_id)
     except Exception as e:
@@ -64,13 +57,8 @@ async def disconnect(sid: str):
 
         if participant_id and room_id:
             async with AsyncSessionLocal() as db:
-                stmt = select(Participant).where(Participant.id == participant_id)
-                res = await db.execute(stmt)
-                participant = res.scalars().first()
-                if participant:
-                    participant.connected = False
-                    db.add(participant)
-                    await db.commit()
+                await set_participant_connection_status(db, participant_id, connected=False)
+                await db.commit()
 
             await emit_player_activity_updated(room_id)
     except Exception as e:

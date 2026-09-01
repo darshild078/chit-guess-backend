@@ -1,4 +1,4 @@
-from app.schemas.common import ApiResponse, ApiErrorResponse, ErrorDetail
+from app.schemas.common import ApiResponse, ApiErrorResponse
 from app.schemas.room import (
     CreateRoomRequest,
     JoinRoomRequest,
@@ -9,32 +9,52 @@ from app.schemas.room import (
     RoomAvailabilityDTO,
     HostRoomViewDTO,
     PlayerRoomViewDTO,
+    RoomSettingsUpdatedDTO,
+    LeaveRoomDTO,
+    StartRoundDTO,
+    LockRoomDTO,
+    EndRoomDTO,
 )
 from app.schemas.participant import (
     PlayerActivityItemDTO,
     LeaderboardItemDTO,
     HostActivityItemDTO,
     HostManagePlayerDTO,
+    RemovePlayerDTO,
 )
 from app.schemas.submission import (
     SubmitChitRequest,
     EditChitRequest,
     MySubmissionDTO,
     SubmissionStatusDTO,
+    RoundPromptInfoDTO,
+    DeleteChitDTO,
 )
 from app.schemas.guess import (
     RoundWordDTO,
     ChitGuessItem,
     SubmitGuessesRequest,
+    ChameleonGuessWordRequest,
     GuessSummaryItem,
     RoundRevealDetailDTO,
+    PlayerBadgeDTO,
     RoundResultsDTO,
+    SubmitGuessesResponseDTO,
+    ChameleonGuessResponseDTO,
 )
+from app.schemas.inbox import (
+    MarkReadRequest,
+    MarkGuessRequest,
+    AnonymousChitDTO,
+    AnonymousInboxDTO,
+    MarkChitReadDTO,
+    MarkChitGuessedDTO,
+)
+from app.schemas.reveal import RevealedChitDTO, RevealResultsDTO
 
 __all__ = [
     "ApiResponse",
     "ApiErrorResponse",
-    "ErrorDetail",
     "CreateRoomRequest",
     "JoinRoomRequest",
     "LockRoomRequest",
@@ -44,18 +64,38 @@ __all__ = [
     "RoomAvailabilityDTO",
     "HostRoomViewDTO",
     "PlayerRoomViewDTO",
+    "RoomSettingsUpdatedDTO",
+    "LeaveRoomDTO",
+    "StartRoundDTO",
+    "LockRoomDTO",
+    "EndRoomDTO",
     "PlayerActivityItemDTO",
     "LeaderboardItemDTO",
     "HostActivityItemDTO",
     "HostManagePlayerDTO",
+    "RemovePlayerDTO",
     "SubmitChitRequest",
     "EditChitRequest",
     "MySubmissionDTO",
     "SubmissionStatusDTO",
+    "RoundPromptInfoDTO",
+    "DeleteChitDTO",
     "RoundWordDTO",
     "ChitGuessItem",
     "SubmitGuessesRequest",
+    "ChameleonGuessWordRequest",
     "GuessSummaryItem",
     "RoundRevealDetailDTO",
+    "PlayerBadgeDTO",
     "RoundResultsDTO",
+    "SubmitGuessesResponseDTO",
+    "ChameleonGuessResponseDTO",
+    "MarkReadRequest",
+    "MarkGuessRequest",
+    "AnonymousChitDTO",
+    "AnonymousInboxDTO",
+    "MarkChitReadDTO",
+    "MarkChitGuessedDTO",
+    "RevealedChitDTO",
+    "RevealResultsDTO",
 ]

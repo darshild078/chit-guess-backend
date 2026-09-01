@@ -1,6 +1,6 @@
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from app.config import settings
+from app.core.config import settings
 
 # Create async engine with PgBouncer / Supabase compatibility
 engine = create_async_engine(
